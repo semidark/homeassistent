@@ -11,12 +11,12 @@ blueprint:
       selector:
         device:
           multiple: false
-    on:
+    "on":
       name: On Pressed
       default: []
       selector:
         action: {}
-    off:
+    "off":
       name: Off Pressed
       default: []
       selector:
