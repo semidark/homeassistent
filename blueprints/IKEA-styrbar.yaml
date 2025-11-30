@@ -1,14 +1,11 @@
 blueprint:
-  name: IKEA Styrbar (Z2M) - Auto Light Control with CT
+  name: IKEA Styrbar (Z2M) - Auto Light Control with CT + Continuous Dimming
   description: >
-    Based on the original Styrbar (Z2M) blueprint, this version automatically controls
-    the configured target light or light group:
-    - "on"/"off" turn lights on/off
-    - "brightness_move_up"/"brightness_move_down" increase/decrease brightness by a step
-    - "arrow_left_click"/"arrow_right_click" change color temperature by a step
-    Optional extra actions can be added for each event and run after the default behavior.
+    Based on the original Styrbar (Z2M) blueprint: on/off, brightness up/down, CT left/right.
+    Adds continuous dimming on hold by repeating small brightness steps until "brightness_stop".
   domain: automation
   author: Modified from Nico Thomaier
+
   input:
     controller_device:
       name: (Zigbee2MQTT) Controller Device
@@ -18,6 +15,14 @@ blueprint:
         device:
           multiple: false
 
+    remote_action_sensor:
+      name: Controller Action Sensor (Zigbee2MQTT)
+      description: The Z2M "action" sensor for the same remote (e.g., sensor.styrbar_action). Used to detect brightness_stop during holds.
+      selector:
+        entity:
+          integration: mqtt
+          domain: sensor
+
     target_light:
       name: Target Light or Light Group
       description: Select the light entity (single light or light group) to control.
@@ -25,16 +30,17 @@ blueprint:
         entity:
           domain: light
 
-    brightness_step:
-      name: Brightness step (1-255)
-      description: Amount to change brightness per click.
-      default: 25
+    brightness_step_pct:
+      name: Brightness step per tick (%)
+      description: Percent change applied repeatedly while holding.
+      default: 2
       selector:
         number:
           min: 1
-          max: 255
+          max: 20
           step: 1
           mode: slider
+          unit_of_measurement: "%"
 
     ct_step:
       name: Color temperature step (mireds)
@@ -68,7 +74,7 @@ blueprint:
       selector:
         action: {}
     brightness_stop:
-      name: Brightness Stop (reserved for future continuous dimming)
+      name: Brightness Stop (extra actions after releasing hold)
       default: []
       selector:
         action: {}
@@ -130,8 +136,10 @@ action:
   - variables:
       trigger_action: "{{ trigger.id }}"
       target: !input target_light
+      remote: !input remote_action_sensor
 
   - choose:
+      # ---------------------------- TURN ON OR OFF ---------------------------- #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "on" }}'
@@ -158,44 +166,70 @@ action:
                     value_template: "true"
                 sequence: !input off
 
+      # ------------------- CONTINUOUS DIMMING (HOLD) -------------------- #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_up" }}'
         sequence:
           - variables:
-              step: !input brightness_step
-              cur_bri: "{{ state_attr(target, 'brightness') | default(0) }}"
-              new_bri: "{{ [cur_bri + step, 255] | min }}"
-          - service: light.turn_on
-            target:
-              entity_id: !input target_light
-            data:
-              brightness: "{{ new_bri }}"
+              pct: !input brightness_step_pct
+          - repeat:
+              until:
+                - condition: state
+                  entity_id: !input remote_action_sensor
+                  state: brightness_stop
+                  attribute: action
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id: !input target_light
+                  data:
+                    brightness_step_pct: "{{ pct }}"
+                    transition: 0.1
+                - delay: 0.1
           - choose:
               - conditions:
                   - condition: template
                     value_template: "true"
                 sequence: !input brightness_move_up
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input brightness_stop
 
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_down" }}'
         sequence:
           - variables:
-              step: !input brightness_step
-              cur_bri: "{{ state_attr(target, 'brightness') | default(0) }}"
-              new_bri: "{{ [cur_bri - step, 1] | max }}"
-          - service: light.turn_on
-            target:
-              entity_id: !input target_light
-            data:
-              brightness: "{{ new_bri }}"
+              pct: !input brightness_step_pct
+          - repeat:
+              until:
+                - condition: state
+                  entity_id: !input remote_action_sensor
+                  state: brightness_stop
+                  attribute: action
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id: !input target_light
+                  data:
+                    brightness_step_pct: "{{ -pct }}"
+                    transition: 0.1
+                - delay: 0.1
           - choose:
               - conditions:
                   - condition: template
                     value_template: "true"
                 sequence: !input brightness_move_down
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input brightness_stop
 
+      # ------------------------ COLOR TEMPERATURE ------------------------ #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_left_click" }}'
