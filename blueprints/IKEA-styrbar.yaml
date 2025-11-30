@@ -1,8 +1,8 @@
 blueprint:
-  name: IKEA Styrbar (Z2M) - Auto Light Control with CT + Continuous Dimming (device-only)
+  name: IKEA Styrbar (Z2M) - Auto Light Control with CT + Continuous Dimming + Button Turn-On Brightness
   description: >
-    On/off, brightness up/down with continuous dimming, and color temperature left/right.
-    Arrow left/right do nothing if the light is off.
+    On/off, brightness up/down with continuous dimming, color temperature left/right.
+    New: configurable turn-on brightness for On button, and Off button turns lights on with a specific brightness if they are currently off.
   domain: automation
   author: Modified from Nico Thomaier
 
@@ -21,8 +21,34 @@ blueprint:
         entity:
           domain: light
 
+    # New configurable brightness when turning on
+    on_brightness_pct:
+      name: Brightness when pressing On (%)
+      description: Brightness to set when the On button is pressed.
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+
+    off_turn_on_brightness_pct:
+      name: Brightness when pressing Off while lights are off (%)
+      description: If the lights are currently off and you press Off, they will turn on at this brightness.
+      default: 25
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+
     brightness_step_pct:
       name: Brightness step per tick (%)
+      description: Percent change applied repeatedly while holding.
       default: 2
       selector:
         number:
@@ -34,6 +60,7 @@ blueprint:
 
     ct_step:
       name: Color temperature step (mireds)
+      description: Amount to change color temperature per left/right arrow click.
       default: 25
       selector:
         number:
@@ -48,7 +75,7 @@ blueprint:
       selector:
         action: {}
     "off":
-      name: Off Pressed (extra actions after turning off)
+      name: Off Pressed (extra actions after turning off / Off-to-On)
       default: []
       selector:
         action: {}
@@ -77,6 +104,8 @@ blueprint:
       default: []
       selector:
         action: {}
+
+  source_url: https://community.home-assistant.io/t/ikea-styrbar-e2001-2002-ultimate-zigbee2mqtt-z2m/625090
 
 mode: single
 max_exceeded: silent
@@ -125,7 +154,7 @@ action:
       target: !input target_light
 
   - choose:
-      # ---------------------------- TURN ON OR OFF ---------------------------- #
+      # ---------------------------- TURN ON ---------------------------- #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "on" }}'
@@ -133,19 +162,34 @@ action:
           - service: light.turn_on
             target:
               entity_id: !input target_light
+            data:
+              brightness_pct: !input on_brightness_pct
           - choose:
               - conditions:
                   - condition: template
                     value_template: "true"
                 sequence: !input on
 
+      # ----------------- OFF: TURN OFF OR TURN ON AT SET BRIGHTNESS ----------------- #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "off" }}'
         sequence:
-          - service: light.turn_off
-            target:
-              entity_id: !input target_light
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input target_light
+                    state: "off"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input target_light
+                    data:
+                      brightness_pct: !input off_turn_on_brightness_pct
+              default:
+                - service: light.turn_off
+                  target:
+                    entity_id: !input target_light
           - choose:
               - conditions:
                   - condition: template
@@ -225,7 +269,7 @@ action:
                     value_template: "true"
                 sequence: !input brightness_stop
 
-      # ------------------------ COLOR TEMPERATURE ------------------------ #
+      # ------------------------ COLOR TEMPERATURE (only if light is ON) ------------------------ #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_left_click" }}'
@@ -253,6 +297,7 @@ action:
                             value_template: "true"
                         sequence: !input arrow_left_click
             default: []
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_right_click" }}'
