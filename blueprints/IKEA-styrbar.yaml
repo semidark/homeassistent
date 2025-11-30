@@ -1,8 +1,14 @@
 blueprint:
-  name: IKEA Styrbar (Z2M)
-  description: Define actions for press and hold on all four buttons of the E2001_E2002 switch.
+  name: IKEA Styrbar Colortemp & Dimmer (Z2M)
+  description: >
+    This blueprint allows you to control an IKEA Styrbar remote (Zigbee2MQTT) to manage a light or light group with advanced features:
+    - Pressing the On button sets the light to a configurable brightness.
+    - Pressing the Off button turns off the light, or if the light is already off, it turns it on at a configurable brightness.
+    - Holding the brightness up/down buttons enables continuous dimming.
+    - Left/right arrow buttons adjust color temperature (only when the light is ON).
   domain: automation
-  author: Keviin Cosmos
+  author: Nico Thomaier
+
   input:
     controller_device:
       name: (Zigbee2MQTT) Controller Device
@@ -11,144 +17,314 @@ blueprint:
       selector:
         device:
           multiple: false
-    hold_delay:
-      name: Hold delay
-      description: If the button has been held more than the configured Hold delay, the corresponding held action is triggered.
-      default: 1000
+
+    target_light:
+      name: Target Light or Light Group
+      description: Select the light entity (single light or light group) to control.
+      selector:
+        entity:
+          domain: light
+
+    on_brightness_pct:
+      name: Brightness when pressing On (%)
+      description: Brightness to set when the On button is pressed.
+      default: 50
       selector:
         number:
-          min: 100.0
-          max: 5000.0
-          unit_of_measurement: milliseconds
-          mode: box
-          step: 10.0
-    light_large_push:
-      name: Light Large (Top) Pushed
+          min: 1
+          max: 100
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+
+    off_turn_on_brightness_pct:
+      name: Brightness when pressing Off while lights are OFF (%)
+      description: If the lights are currently off and you press Off, they will turn on at this brightness.
+      default: 25
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+
+    brightness_step_pct:
+      name: Brightness step per tick (%)
+      description: Percent change applied repeatedly while holding (continuous dimming).
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+
+    ct_step:
+      name: Color temperature step (mireds)
+      description: Amount to change color temperature per left/right arrow click.
+      default: 25
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: slider
+
+    "on":
+      name: On Pressed (extra actions after turning on)
       default: []
       selector:
         action: {}
-    light_large_hold:
-      name: Light Large (Top) Held
+    "off":
+      name: Off Pressed (extra actions after turning off / Off-to-On)
       default: []
       selector:
         action: {}
-    light_small_push:
-      name: Light Small (Bottom) Pushed
+    brightness_move_up:
+      name: Brightness Move Up (extra actions after raising brightness / hold)
       default: []
       selector:
         action: {}
-    light_small_hold:
-      name: Light Small (Bottom) Held
+    brightness_move_down:
+      name: Brightness Move Down (extra actions after lowering brightness / hold)
       default: []
       selector:
         action: {}
-    arrow_left_push:
-      name: Arrow Left Pushed
+    brightness_stop:
+      name: Brightness Stop (extra actions after releasing hold)
       default: []
       selector:
         action: {}
-    arrow_left_hold:
-      name: Arrow Left Held
+    arrow_left_click:
+      name: Arrow Left Clicked (extra actions after CT change)
       default: []
       selector:
         action: {}
-    arrow_right_push:
-      name: Arrow Right Pushed
+    arrow_right_click:
+      name: Arrow Right Clicked (extra actions after CT change)
       default: []
       selector:
         action: {}
-    arrow_right_hold:
-      name: Arrow Right Held
-      default: []
-      selector:
-        action: {}
+
   source_url: https://community.home-assistant.io/t/ikea-styrbar-e2001-2002-ultimate-zigbee2mqtt-z2m/625090
+
 mode: single
 max_exceeded: silent
 
-triggers:
-  - trigger: device
+trigger:
+  - platform: device
     domain: mqtt
     device_id: !input controller_device
     type: action
     id: "on"
     subtype: "on"
-  - trigger: device
-    domain: mqtt
-    device_id: !input controller_device
-    type: action
-    id: "brightness_move_up"
-    subtype: "brightness_move_up"
-  - trigger: device
+  - platform: device
     domain: mqtt
     device_id: !input controller_device
     type: action
     id: "off"
     subtype: "off"
-  - trigger: device
+  - platform: device
+    domain: mqtt
+    device_id: !input controller_device
+    type: action
+    id: "brightness_move_up"
+    subtype: "brightness_move_up"
+  - platform: device
     domain: mqtt
     device_id: !input controller_device
     type: action
     id: "brightness_move_down"
     subtype: "brightness_move_down"
-  - trigger: device
+  - platform: device
     domain: mqtt
     device_id: !input controller_device
     type: action
     id: "arrow_left_click"
     subtype: "arrow_left_click"
-  - trigger: device
+  - platform: device
     domain: mqtt
     device_id: !input controller_device
     type: action
     id: "arrow_right_click"
     subtype: "arrow_right_click"
-  - trigger: device
-    domain: mqtt
-    device_id: !input controller_device
-    type: action
-    id: "arrow_left_hold"
-    subtype: "arrow_left_hold"
-  - trigger: device
-    domain: mqtt
-    device_id: !input controller_device
-    type: action
-    id: "arrow_right_hold"
-    subtype: "arrow_right_hold"
 
 action:
   - variables:
       trigger_action: "{{ trigger.id }}"
+      target: !input target_light
+
   - choose:
+      # ---------------------------- TURN ON ---------------------------- #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "on" }}'
-        sequence: !input light_large_push
-      - conditions:
-          - condition: template
-            value_template: '{{ trigger_action == "brightness_move_up" }}'
-        sequence: !input light_large_hold
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              brightness_pct: !input on_brightness_pct
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input on
+
+      # -------- OFF: TURN OFF OR TURN ON AT SET BRIGHTNESS WHEN CURRENTLY OFF -------- #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "off" }}'
-        sequence: !input light_small_push
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input target_light
+                    state: "off"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input target_light
+                    data:
+                      brightness_pct: !input off_turn_on_brightness_pct
+            default:
+              - service: light.turn_off
+                target:
+                  entity_id: !input target_light
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input off
+
+      # ------------------- CONTINUOUS DIMMING (HOLD) -------------------- #
+      - conditions:
+          - condition: template
+            value_template: '{{ trigger_action == "brightness_move_up" }}'
+        sequence:
+          - variables:
+              pct: !input brightness_step_pct
+          - repeat:
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id: !input target_light
+                  data:
+                    brightness_step_pct: "{{ pct }}"
+                    transition: 0.1
+                - wait_for_trigger:
+                    - platform: device
+                      domain: mqtt
+                      device_id: !input controller_device
+                      type: action
+                      subtype: brightness_stop
+                  timeout: 0.1
+                  continue_on_timeout: true
+              until:
+                - condition: template
+                  value_template: "{{ wait.trigger is not none }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input brightness_move_up
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input brightness_stop
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_down" }}'
-        sequence: !input light_small_hold
+        sequence:
+          - variables:
+              pct: !input brightness_step_pct
+          - repeat:
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id: !input target_light
+                  data:
+                    brightness_step_pct: "{{ -pct }}"
+                    transition: 0.1
+                - wait_for_trigger:
+                    - platform: device
+                      domain: mqtt
+                      device_id: !input controller_device
+                      type: action
+                      subtype: brightness_stop
+                  timeout: 0.1
+                  continue_on_timeout: true
+              until:
+                - condition: template
+                  value_template: "{{ wait.trigger is not none }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input brightness_move_down
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input brightness_stop
+
+      # ------------------------ COLOR TEMPERATURE (only if light is ON) ------------------------ #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_left_click" }}'
-        sequence: !input arrow_left_push
-      - conditions:
-          - condition: template
-            value_template: '{{ trigger_action == "arrow_left_hold" }}'
-        sequence: !input arrow_left_hold
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input target_light
+                    state: "on"
+                sequence:
+                  - variables:
+                      min_ct: "{{ state_attr(target, 'min_mireds') | default(153) }}"
+                      max_ct: "{{ state_attr(target, 'max_mireds') | default(500) }}"
+                      step_ct: !input ct_step
+                      cur_ct: "{{ state_attr(target, 'color_temp') | default(((min_ct + max_ct) // 2), true) }}"
+                      new_ct: "{{ [cur_ct - step_ct, min_ct] | max }}"
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input target_light
+                    data:
+                      color_temp: "{{ new_ct }}"
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "true"
+                        sequence: !input arrow_left_click
+            default: []
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_right_click" }}'
-        sequence: !input arrow_right_push
-      - conditions:
-          - condition: template
-            value_template: '{{ trigger_action == "arrow_right_hold" }}'
-        sequence: !input arrow_right_hold
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input target_light
+                    state: "on"
+                sequence:
+                  - variables:
+                      min_ct: "{{ state_attr(target, 'min_mireds') | default(153) }}"
+                      max_ct: "{{ state_attr(target, 'max_mireds') | default(500) }}"
+                      step_ct: !input ct_step
+                      cur_ct: "{{ state_attr(target, 'color_temp') | default(((min_ct + max_ct) // 2), true) }}"
+                      new_ct: "{{ [cur_ct + step_ct, max_ct] | min }}"
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input target_light
+                    data:
+                      color_temp: "{{ new_ct }}"
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "true"
+                        sequence: !input arrow_right_click
+            default: []
