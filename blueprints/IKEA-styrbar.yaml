@@ -1,8 +1,10 @@
 blueprint:
-  name: IKEA Styrbar (Z2M)
-  description: Define actions for press and hold on all four buttons of the E2001_E2002 switch.
+  name: IKEA Styrbar (Z2M) - Color Temp Control
+  description: >
+    Define actions for press and hold on all four buttons of the E2001_E2002 switch.
+    Adds built-in color temperature control on left/right arrow clicks for the selected light.
   domain: automation
-  author: Nico Thomaier
+  author: Nico Thomaier (modified)
   input:
     controller_device:
       name: (Zigbee2MQTT) Controller Device
@@ -11,6 +13,25 @@ blueprint:
       selector:
         device:
           multiple: false
+
+    target_light:
+      name: Target Light (color temperature capable)
+      description: Select the light entity to control color temperature on arrow left/right clicks.
+      selector:
+        entity:
+          domain: light
+
+    ct_step:
+      name: Color temperature step (mireds)
+      description: How much to change per arrow click (lower mireds = cooler, higher = warmer).
+      default: 25
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: slider
+
     "on":
       name: On Pressed
       default: []
@@ -37,20 +58,20 @@ blueprint:
       selector:
         action: {}
     arrow_left_click:
-      name: Arrow Left Clicked
+      name: Arrow Left Clicked (extra actions after CT change)
       default: []
       selector:
         action: {}
     arrow_right_click:
-      name: Arrow Right Clicked
+      name: Arrow Right Clicked (extra actions after CT change)
       default: []
       selector:
         action: {}
 
   source_url: https://community.home-assistant.io/t/ikea-styrbar-e2001-2002-ultimate-zigbee2mqtt-z2m/625090
+
 mode: single
 max_exceeded: silent
-
 
 trigger:
   - platform: device
@@ -93,28 +114,68 @@ trigger:
 action:
   - variables:
       trigger_action: "{{ trigger.id }}"
+
   - choose:
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "on" }}'
         sequence: !input on
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_up" }}'
         sequence: !input brightness_move_up
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "off" }}'
         sequence: !input off
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_down" }}'
         sequence: !input brightness_move_down
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_left_click" }}'
-        sequence: !input arrow_left_click
+        sequence:
+          - variables:
+              target: !input target_light
+              min_ct: "{{ state_attr(target, 'min_mireds') | default(153) }}"
+              max_ct: "{{ state_attr(target, 'max_mireds') | default(500) }}"
+              step: !input ct_step
+              cur_ct: "{{ state_attr(target, 'color_temp') | default(((min_ct + max_ct) // 2), true) }}"
+              new_ct: "{{ [cur_ct - step, min_ct] | max }}"
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              color_temp: "{{ new_ct }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input arrow_left_click
+
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_right_click" }}'
-        sequence: !input arrow_right_click
+        sequence:
+          - variables:
+              target: !input target_light
+              min_ct: "{{ state_attr(target, 'min_mireds') | default(153) }}"
+              max_ct: "{{ state_attr(target, 'max_mireds') | default(500) }}"
+              step: !input ct_step
+              cur_ct: "{{ state_attr(target, 'color_temp') | default(((min_ct + max_ct) // 2), true) }}"
+              new_ct: "{{ [cur_ct + step, max_ct] | min }}"
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              color_temp: "{{ new_ct }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "true"
+                sequence: !input arrow_right_click
