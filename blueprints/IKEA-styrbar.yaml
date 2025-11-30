@@ -1,11 +1,13 @@
 blueprint:
-  name: IKEA Styrbar (Z2M) - Auto Light Control with CT + Continuous Dimming + Button Turn-On Brightness
+  name: IKEA Styrbar Colortemp & Dimmer (Z2M)
   description: >
-    Based on the original Styrbar (Z2M) blueprint: on/off, brightness up/down with continuous dimming,
-    color temperature left/right (only when light is ON). Adds configurable turn-on brightness for the On button,
-    and pressing Off while the light is OFF turns it on at a configured brightness.
+    This blueprint allows you to control an IKEA Styrbar remote (Zigbee2MQTT) to manage a light or light group with advanced features:
+    - Pressing the On button sets the light to a configurable brightness.
+    - Pressing the Off button turns off the light, or if the light is already off, it turns it on at a configurable brightness.
+    - Holding the brightness up/down buttons enables continuous dimming.
+    - Left/right arrow buttons adjust color temperature (only when the light is ON).
   domain: automation
-  author: Modified from Nico Thomaier
+  author: Nico Thomaier
 
   input:
     controller_device:
@@ -50,7 +52,7 @@ blueprint:
     brightness_step_pct:
       name: Brightness step per tick (%)
       description: Percent change applied repeatedly while holding (continuous dimming).
-      default: 2
+      default: 10
       selector:
         number:
           min: 1
