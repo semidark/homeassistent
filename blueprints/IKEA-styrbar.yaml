@@ -53,61 +53,42 @@ max_exceeded: silent
 
 
 trigger:
-  - platform: state
+  - platform: device
+    domain: mqtt
     device_id: !input controller_device
-    attribute: action
-    # Prefent double automation triggers in restart mode
-    not_to: ""
-
-# triggers:
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "on"
-#     subtype: "on"
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "brightness_move_up"
-#     subtype: "brightness_move_up"
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "off"
-#     subtype: "off"
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "brightness_move_down"
-#     subtype: "brightness_move_down"
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "arrow_left_click"
-#     subtype: "arrow_left_click"
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "arrow_right_click"
-#     subtype: "arrow_right_click"
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "arrow_left_hold"
-#     subtype: "arrow_left_hold"
-#   - trigger: device
-#     domain: mqtt
-#     device_id: !input controller_device
-#     type: action
-#     id: "arrow_right_hold"
-#     subtype: "arrow_right_hold"
+    type: action
+    id: "on"
+    subtype: "on"
+  - platform: device
+    domain: mqtt
+    device_id: !input controller_device
+    type: action
+    id: "off"
+    subtype: "off"
+  - platform: device
+    domain: mqtt
+    device_id: !input controller_device
+    type: action
+    id: "brightness_move_up"
+    subtype: "brightness_move_up"
+  - platform: device
+    domain: mqtt
+    device_id: !input controller_device
+    type: action
+    id: "brightness_move_down"
+    subtype: "brightness_move_down"
+  - platform: device
+    domain: mqtt
+    device_id: !input controller_device
+    type: action
+    id: "arrow_left_click"
+    subtype: "arrow_left_click"
+  - platform: device
+    domain: mqtt
+    device_id: !input controller_device
+    type: action
+    id: "arrow_right_click"
+    subtype: "arrow_right_click"
 
 action:
   - variables:
