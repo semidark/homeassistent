@@ -116,32 +116,24 @@ action:
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "on" }}'
-        sequence: !input light_large_push
+        sequence: !input on
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_up" }}'
-        sequence: !input light_large_hold
+        sequence: !input brightness_move_up
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "off" }}'
-        sequence: !input light_small_push
+        sequence: !input off
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_down" }}'
-        sequence: !input light_small_hold
+        sequence: !input brightness_move_down
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_left_click" }}'
-        sequence: !input arrow_left_push
-      - conditions:
-          - condition: template
-            value_template: '{{ trigger_action == "arrow_left_hold" }}'
-        sequence: !input arrow_left_hold
+        sequence: !input arrow_left_click
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "arrow_right_click" }}'
-        sequence: !input arrow_right_push
-      - conditions:
-          - condition: template
-            value_template: '{{ trigger_action == "arrow_right_hold" }}'
-        sequence: !input arrow_right_hold
+        sequence: !input arrow_right_click
