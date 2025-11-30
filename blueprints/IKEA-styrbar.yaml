@@ -1,8 +1,8 @@
 blueprint:
-  name: IKEA Styrbar (Z2M) - Auto Light Control with CT + Continuous Dimming
+  name: IKEA Styrbar (Z2M) - Auto Light Control with CT + Continuous Dimming (device-only)
   description: >
     Based on the original Styrbar (Z2M) blueprint: on/off, brightness up/down, CT left/right.
-    Adds continuous dimming on hold by repeating small brightness steps until "brightness_stop".
+    Adds continuous dimming on hold by waiting for the same device's "brightness_stop" action.
   domain: automation
   author: Modified from Nico Thomaier
 
@@ -14,14 +14,6 @@ blueprint:
       selector:
         device:
           multiple: false
-
-    remote_action_sensor:
-      name: Controller Action Sensor (Zigbee2MQTT)
-      description: The Z2M "action" sensor for the same remote (e.g., sensor.styrbar_action). Used to detect brightness_stop during holds.
-      selector:
-        entity:
-          integration: mqtt
-          domain: sensor
 
     target_light:
       name: Target Light or Light Group
@@ -64,12 +56,12 @@ blueprint:
       selector:
         action: {}
     brightness_move_up:
-      name: Brightness Move Up (extra actions after raising brightness)
+      name: Brightness Move Up (extra actions after raising brightness / hold)
       default: []
       selector:
         action: {}
     brightness_move_down:
-      name: Brightness Move Down (extra actions after lowering brightness)
+      name: Brightness Move Down (extra actions after lowering brightness / hold)
       default: []
       selector:
         action: {}
@@ -136,7 +128,6 @@ action:
   - variables:
       trigger_action: "{{ trigger.id }}"
       target: !input target_light
-      remote: !input remote_action_sensor
 
   - choose:
       # ---------------------------- TURN ON OR OFF ---------------------------- #
@@ -174,11 +165,6 @@ action:
           - variables:
               pct: !input brightness_step_pct
           - repeat:
-              until:
-                - condition: state
-                  entity_id: !input remote_action_sensor
-                  state: brightness_stop
-                  attribute: action
               sequence:
                 - service: light.turn_on
                   target:
@@ -186,7 +172,17 @@ action:
                   data:
                     brightness_step_pct: "{{ pct }}"
                     transition: 0.1
-                - delay: 0.1
+                - wait_for_trigger:
+                    - platform: device
+                      domain: mqtt
+                      device_id: !input controller_device
+                      type: action
+                      subtype: brightness_stop
+                  timeout: 0.1
+                  continue_on_timeout: true
+              until:
+                - condition: template
+                  value_template: "{{ wait.trigger is not none }}"
           - choose:
               - conditions:
                   - condition: template
@@ -205,11 +201,6 @@ action:
           - variables:
               pct: !input brightness_step_pct
           - repeat:
-              until:
-                - condition: state
-                  entity_id: !input remote_action_sensor
-                  state: brightness_stop
-                  attribute: action
               sequence:
                 - service: light.turn_on
                   target:
@@ -217,7 +208,17 @@ action:
                   data:
                     brightness_step_pct: "{{ -pct }}"
                     transition: 0.1
-                - delay: 0.1
+                - wait_for_trigger:
+                    - platform: device
+                      domain: mqtt
+                      device_id: !input controller_device
+                      type: action
+                      subtype: brightness_stop
+                  timeout: 0.1
+                  continue_on_timeout: true
+              until:
+                - condition: template
+                  value_template: "{{ wait.trigger is not none }}"
           - choose:
               - conditions:
                   - condition: template
