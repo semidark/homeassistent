@@ -1,8 +1,9 @@
 blueprint:
   name: IKEA Styrbar (Z2M) - Auto Light Control with CT + Continuous Dimming + Button Turn-On Brightness
   description: >
-    On/off, brightness up/down with continuous dimming, color temperature left/right.
-    New: configurable turn-on brightness for On button, and Off button turns lights on with a specific brightness if they are currently off.
+    Based on the original Styrbar (Z2M) blueprint: on/off, brightness up/down with continuous dimming,
+    color temperature left/right (only when light is ON). Adds configurable turn-on brightness for the On button,
+    and pressing Off while the light is OFF turns it on at a configured brightness.
   domain: automation
   author: Modified from Nico Thomaier
 
@@ -17,11 +18,11 @@ blueprint:
 
     target_light:
       name: Target Light or Light Group
+      description: Select the light entity (single light or light group) to control.
       selector:
         entity:
           domain: light
 
-    # New configurable brightness when turning on
     on_brightness_pct:
       name: Brightness when pressing On (%)
       description: Brightness to set when the On button is pressed.
@@ -35,7 +36,7 @@ blueprint:
           unit_of_measurement: "%"
 
     off_turn_on_brightness_pct:
-      name: Brightness when pressing Off while lights are off (%)
+      name: Brightness when pressing Off while lights are OFF (%)
       description: If the lights are currently off and you press Off, they will turn on at this brightness.
       default: 25
       selector:
@@ -48,7 +49,7 @@ blueprint:
 
     brightness_step_pct:
       name: Brightness step per tick (%)
-      description: Percent change applied repeatedly while holding.
+      description: Percent change applied repeatedly while holding (continuous dimming).
       default: 2
       selector:
         number:
@@ -170,7 +171,7 @@ action:
                     value_template: "true"
                 sequence: !input on
 
-      # ----------------- OFF: TURN OFF OR TURN ON AT SET BRIGHTNESS ----------------- #
+      # -------- OFF: TURN OFF OR TURN ON AT SET BRIGHTNESS WHEN CURRENTLY OFF -------- #
       - conditions:
           - condition: template
             value_template: '{{ trigger_action == "off" }}'
@@ -186,10 +187,10 @@ action:
                       entity_id: !input target_light
                     data:
                       brightness_pct: !input off_turn_on_brightness_pct
-              default:
-                - service: light.turn_off
-                  target:
-                    entity_id: !input target_light
+            default:
+              - service: light.turn_off
+                target:
+                  entity_id: !input target_light
           - choose:
               - conditions:
                   - condition: template
