@@ -1,5 +1,5 @@
 blueprint:
-  name: IKEA Styrbar - E2001_E2002 Switch Actions (Z2M)
+  name: IKEA Styrbar (Z2M)
   description: Define actions for press and hold on all four buttons of the E2001_E2002 switch.
   domain: automation
   author: Keviin Cosmos
