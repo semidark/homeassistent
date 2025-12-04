@@ -1,13 +1,14 @@
 blueprint:
-  name: IKEA Styrbar Colortemp & Dimmer (Z2M)
+  name: IKEA Styrbar Colortemp & Dimmer (Z2M, move-friendly)
   description: >
-    This blueprint allows you to control an IKEA Styrbar remote (Zigbee2MQTT) to manage a light or light group with advanced features:
-    - Pressing the On button sets the light to a configurable brightness.
-    - Pressing the Off button turns off the light, or if the light is already off, it turns it on at a configurable brightness.
-    - Holding the brightness up/down buttons enables continuous dimming.
-    - Left/right arrow buttons adjust color temperature (only when the light is ON).
+    Styrbar control optimized for IKEA LED2107C4: uses Zigbee2MQTT move/stop for continuous dimming to prevent flooding.
+    - On sets brightness.
+    - Off toggles or turns on at a set level.
+    - Hold brightness up/down starts a single move command; release sends stop.
+    - Left/right adjust color temperature (only when ON).
+    - If z2m_topic is empty, falls back to step dimming at a slower rate without transition.
   domain: automation
-  author: Nico Thomaier
+  author: Nico Thomaier (modified)
 
   input:
     controller_device:
@@ -25,9 +26,9 @@ blueprint:
         entity:
           domain: light
 
+    # On/Off behavior
     on_brightness_pct:
       name: Brightness when pressing On (%)
-      description: Brightness to set when the On button is pressed.
       default: 50
       selector:
         number:
@@ -39,7 +40,6 @@ blueprint:
 
     off_turn_on_brightness_pct:
       name: Brightness when pressing Off while lights are OFF (%)
-      description: If the lights are currently off and you press Off, they will turn on at this brightness.
       default: 25
       selector:
         number:
@@ -49,9 +49,35 @@ blueprint:
           mode: slider
           unit_of_measurement: "%"
 
+    # Dimming config
+    use_move:
+      name: Use Zigbee2MQTT move/stop for continuous dimming
+      description: Recommended for IKEA bulbs to prevent flooding.
+      default: true
+      selector:
+        boolean: {}
+
+    move_rate:
+      name: Move rate (units per second)
+      description: Positive moves up, negative moves down. Typical = 40.
+      default: 40
+      selector:
+        number:
+          min: 10
+          max: 100
+          step: 5
+          mode: slider
+
+    z2m_topic:
+      name: Zigbee2MQTT topic (friendly name or Zigbee2MQTT group name)
+      description: Example: LivingRoomLamp or BedroomGroup. Leave empty to use step fallback.
+      default: ""
+      selector:
+        text: {}
+
+    # Fallback step config
     brightness_step_pct:
-      name: Brightness step per tick (%)
-      description: Percent change applied repeatedly while holding (continuous dimming).
+      name: Brightness step per tick (%) [fallback only]
       default: 10
       selector:
         number:
@@ -61,9 +87,19 @@ blueprint:
           mode: slider
           unit_of_measurement: "%"
 
+    step_interval:
+      name: Fallback step interval (seconds)
+      default: 0.3
+      selector:
+        number:
+          min: 0.2
+          max: 1.0
+          step: 0.1
+          mode: slider
+
+    # Color temp
     ct_step:
       name: Color temperature step (mireds)
-      description: Amount to change color temperature per left/right arrow click.
       default: 25
       selector:
         number:
@@ -72,6 +108,7 @@ blueprint:
           step: 1
           mode: slider
 
+    # Extra actions
     "on":
       name: On Pressed (extra actions after turning on)
       default: []
@@ -155,6 +192,11 @@ action:
   - variables:
       trigger_action: "{{ trigger.id }}"
       target: !input target_light
+      use_move: !input use_move
+      move_rate: !input move_rate
+      z2m_topic: !input z2m_topic
+      step_pct: !input brightness_step_pct
+      step_interval: !input step_interval
 
   - choose:
       # ---------------------------- TURN ON ---------------------------- #
@@ -204,27 +246,72 @@ action:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_up" }}'
         sequence:
-          - variables:
-              pct: !input brightness_step_pct
-          - repeat:
-              sequence:
-                - service: light.turn_on
-                  target:
-                    entity_id: !input target_light
-                  data:
-                    brightness_step_pct: "{{ pct }}"
-                    transition: 0.1
-                - wait_for_trigger:
-                    - platform: device
-                      domain: mqtt
-                      device_id: !input controller_device
-                      type: action
-                      subtype: brightness_stop
-                  timeout: 0.1
-                  continue_on_timeout: true
-              until:
-                - condition: template
-                  value_template: "{{ wait.trigger is not none }}"
+          - choose:
+              # Preferred: Zigbee2MQTT move/stop
+              - conditions:
+                  - condition: template
+                    value_template: '{{ use_move and (z2m_topic | length) > 0 }}'
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: state
+                            entity_id: !input target_light
+                            state: "off"
+                        sequence:
+                          # Use ..._onoff so the bulb turns on while starting the move
+                          - service: mqtt.publish
+                            data:
+                              topic: "zigbee2mqtt/{{ z2m_topic }}/set"
+                              payload: '{{ {"brightness_move_onoff": move_rate} | tojson }}'
+                    default:
+                      - service: mqtt.publish
+                        data:
+                          topic: "zigbee2mqtt/{{ z2m_topic }}/set"
+                          payload: '{{ {"brightness_move": move_rate} | tojson }}'
+                  - wait_for_trigger:
+                      - platform: device
+                        domain: mqtt
+                        device_id: !input controller_device
+                        type: action
+                        subtype: brightness_stop
+                    timeout: "00:05:00"
+                    continue_on_timeout: true
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ z2m_topic }}/set"
+                      payload: '{{ {"brightness_move": 0} | tojson }}'
+              # Fallback: slower step without transition
+              - conditions:
+                  - condition: template
+                    value_template: "{{ not use_move or (z2m_topic | length) == 0 }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: state
+                            entity_id: !input target_light
+                            state: "off"
+                        sequence:
+                          - service: light.turn_on
+                            target:
+                              entity_id: !input target_light
+                  - repeat:
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input target_light
+                          data:
+                            brightness_step_pct: "{{ step_pct }}"
+                        - wait_for_trigger:
+                            - platform: device
+                              domain: mqtt
+                              device_id: !input controller_device
+                              type: action
+                              subtype: brightness_stop
+                          timeout: "{{ step_interval }}"
+                          continue_on_timeout: true
+                      until:
+                        - condition: template
+                          value_template: "{{ wait.trigger is not none }}"
           - choose:
               - conditions:
                   - condition: template
@@ -240,27 +327,71 @@ action:
           - condition: template
             value_template: '{{ trigger_action == "brightness_move_down" }}'
         sequence:
-          - variables:
-              pct: !input brightness_step_pct
-          - repeat:
-              sequence:
-                - service: light.turn_on
-                  target:
-                    entity_id: !input target_light
-                  data:
-                    brightness_step_pct: "{{ -pct }}"
-                    transition: 0.1
-                - wait_for_trigger:
-                    - platform: device
-                      domain: mqtt
-                      device_id: !input controller_device
-                      type: action
-                      subtype: brightness_stop
-                  timeout: 0.1
-                  continue_on_timeout: true
-              until:
-                - condition: template
-                  value_template: "{{ wait.trigger is not none }}"
+          - choose:
+              # Preferred: Zigbee2MQTT move/stop
+              - conditions:
+                  - condition: template
+                    value_template: '{{ use_move and (z2m_topic | length) > 0 }}'
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: state
+                            entity_id: !input target_light
+                            state: "off"
+                        sequence:
+                          - service: mqtt.publish
+                            data:
+                              topic: "zigbee2mqtt/{{ z2m_topic }}/set"
+                              payload: '{{ {"brightness_move_onoff": (0 - move_rate)} | tojson }}'
+                    default:
+                      - service: mqtt.publish
+                        data:
+                          topic: "zigbee2mqtt/{{ z2m_topic }}/set"
+                          payload: '{{ {"brightness_move": (0 - move_rate)} | tojson }}'
+                  - wait_for_trigger:
+                      - platform: device
+                        domain: mqtt
+                        device_id: !input controller_device
+                        type: action
+                        subtype: brightness_stop
+                    timeout: "00:05:00"
+                    continue_on_timeout: true
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ z2m_topic }}/set"
+                      payload: '{{ {"brightness_move": 0} | tojson }}'
+              # Fallback: slower step without transition
+              - conditions:
+                  - condition: template
+                    value_template: "{{ not use_move or (z2m_topic | length) == 0 }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: state
+                            entity_id: !input target_light
+                            state: "off"
+                        sequence:
+                          - service: light.turn_on
+                            target:
+                              entity_id: !input target_light
+                  - repeat:
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: !input target_light
+                          data:
+                            brightness_step_pct: "{{ (0 - step_pct) }}"
+                        - wait_for_trigger:
+                            - platform: device
+                              domain: mqtt
+                              device_id: !input controller_device
+                              type: action
+                              subtype: brightness_stop
+                          timeout: "{{ step_interval }}"
+                          continue_on_timeout: true
+                      until:
+                        - condition: template
+                          value_template: "{{ wait.trigger is not none }}"
           - choose:
               - conditions:
                   - condition: template
