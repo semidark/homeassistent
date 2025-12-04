@@ -114,45 +114,6 @@ blueprint:
           max: 100
           step: 1
 
-    # Extra actions
-    "on":
-      name: On Pressed (extra actions after turning on)
-      default: []
-      selector:
-        action: {}
-    "off":
-      name: Off Pressed (extra actions after turning off / Off-to-On)
-      default: []
-      selector:
-        action: {}
-    brightness_move_up:
-      name: Brightness Move Up (extra actions after raising brightness / hold)
-      default: []
-      selector:
-        action: {}
-    brightness_move_down:
-      name: Brightness Move Down (extra actions after lowering brightness / hold)
-      default: []
-      selector:
-        action: {}
-    brightness_stop:
-      name: Brightness Stop (extra actions after releasing hold)
-      default: []
-      selector:
-        action: {}
-    arrow_left_click:
-      name: Arrow Left Clicked (extra actions after CT change)
-      default: []
-      selector:
-        action: {}
-    arrow_right_click:
-      name: Arrow Right Clicked (extra actions after CT change)
-      default: []
-      selector:
-        action: {}
-
-  source_url: https://community.home-assistant.io/t/ikea-styrbar-e2001-2002-ultimate-zigbee2mqtt-z2m/625090
-
 mode: single
 max_exceeded: silent
 
