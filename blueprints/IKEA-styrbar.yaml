@@ -6,7 +6,9 @@ blueprint:
     - Off toggles or turns on at a set level.
     - Hold brightness up/down starts a single move command; release sends stop.
     - Left/right adjust color temperature (only when ON).
-    - If z2m_topic is empty, falls back to step dimming at a slower rate without transition.
+    Notes:
+    - Uses moving/stepping per device docs (move/stop preferred over rapid step to reduce traffic) [1].
+    - IKEA lights only support transitions on 1 attribute at a time; brightness and color_temp changes are not combined [1].
   domain: automation
   author: Nico Thomaier (modified)
 
@@ -29,6 +31,7 @@ blueprint:
     # On/Off behavior
     on_brightness_pct:
       name: Brightness when pressing On (%)
+      description: Brightness to set when the On button is pressed.
       default: 50
       selector:
         number:
@@ -40,6 +43,7 @@ blueprint:
 
     off_turn_on_brightness_pct:
       name: Brightness when pressing Off while lights are OFF (%)
+      description: If the lights are currently off and you press Off, they will turn on at this brightness.
       default: 25
       selector:
         number:
@@ -70,14 +74,15 @@ blueprint:
 
     z2m_topic:
       name: Zigbee2MQTT topic (friendly name or Zigbee2MQTT group name)
-      description: Example: LivingRoomLamp or BedroomGroup. Leave empty to use step fallback.
+      description: "Example: LivingRoomLamp or BedroomGroup. Leave empty to use step fallback."
       default: ""
       selector:
-        text: {}
+        text:
 
-    # Fallback step config
+    # Fallback step config (used when not using move/stop)
     brightness_step_pct:
       name: Brightness step per tick (%) [fallback only]
+      description: Percent change applied repeatedly while holding (continuous dimming).
       default: 10
       selector:
         number:
@@ -89,6 +94,7 @@ blueprint:
 
     step_interval:
       name: Fallback step interval (seconds)
+      description: Interval between step commands when using fallback.
       default: 0.3
       selector:
         number:
@@ -100,13 +106,13 @@ blueprint:
     # Color temp
     ct_step:
       name: Color temperature step (mireds)
+      description: Amount to change color temperature per left/right arrow click.
       default: 25
       selector:
         number:
           min: 1
           max: 100
           step: 1
-          mode: slider
 
     # Extra actions
     "on":
@@ -258,7 +264,7 @@ action:
                             entity_id: !input target_light
                             state: "off"
                         sequence:
-                          # Use ..._onoff so the bulb turns on while starting the move
+                          # Use ..._onoff so the bulb turns on while starting the move [1]
                           - service: mqtt.publish
                             data:
                               topic: "zigbee2mqtt/{{ z2m_topic }}/set"
@@ -276,11 +282,12 @@ action:
                         subtype: brightness_stop
                     timeout: "00:05:00"
                     continue_on_timeout: true
+                  # Stop the move on release [1]
                   - service: mqtt.publish
                     data:
                       topic: "zigbee2mqtt/{{ z2m_topic }}/set"
                       payload: '{{ {"brightness_move": 0} | tojson }}'
-              # Fallback: slower step without transition
+              # Fallback: slower step without transition (to avoid flooding) [1]
               - conditions:
                   - condition: template
                     value_template: "{{ not use_move or (z2m_topic | length) == 0 }}"
@@ -360,7 +367,7 @@ action:
                     data:
                       topic: "zigbee2mqtt/{{ z2m_topic }}/set"
                       payload: '{{ {"brightness_move": 0} | tojson }}'
-              # Fallback: slower step without transition
+              # Fallback: slower step without transition (to avoid flooding) [1]
               - conditions:
                   - condition: template
                     value_template: "{{ not use_move or (z2m_topic | length) == 0 }}"
