@@ -28,6 +28,13 @@ blueprint:
         entity:
           domain: light
 
+    z2m_topic:
+      name: Zigbee2MQTT topic (friendly name or Zigbee2MQTT group name)
+      description: "Example: LivingRoomLamp or BedroomGroup. Leave empty to use step fallback."
+      default: ""
+      selector:
+        text:
+
     # On/Off behavior
     on_brightness_pct:
       name: Brightness when pressing On (%)
@@ -71,13 +78,6 @@ blueprint:
           max: 100
           step: 5
           mode: slider
-
-    z2m_topic:
-      name: Zigbee2MQTT topic (friendly name or Zigbee2MQTT group name)
-      description: "Example: LivingRoomLamp or BedroomGroup. Leave empty to use step fallback."
-      default: ""
-      selector:
-        text:
 
     # Fallback step config (used when not using move/stop)
     brightness_step_pct:
